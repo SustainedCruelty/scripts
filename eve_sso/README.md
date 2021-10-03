@@ -1,6 +1,6 @@
 Short script made for testing purposes to pull access and refresh tokens allowing you to make authenticated esi requests.
 It is required that you have registered your own EVE application. If you haven't done so already you can do it [here](https://developers.eveonline.com/applications/create).
-Additionally, the script only works if your application has the default callback url (http://localhost/oauth-callback)-
+Additionally, the script only works if your application has the default callback url (http://localhost/oauth-callback).
 
 ### Run the script
 ```bash
