@@ -8,6 +8,11 @@ Usage of freeproxies.exe:
   -p string
         whether to fetch http or https proxies (default "http")
 ```
+### Compile
+Build your own version from source
+```bash
+go build freeproxies.go freeproxylist.go geonode.go proxyscrape.go
+```
 ### Current sources
 - https://free-proxy-list.net/
 - https://geonode.com/free-proxy-list
