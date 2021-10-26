@@ -209,8 +209,8 @@ func pullStructureOrders(refresh_tokenPtr *C.char, client_idPtr *C.char, structu
 
 	form := url.Values{}
 	form.Add("grant_type", "refresh_token")
-	form.Add("refresh_token", refresh_token) // JGR6IFtxpkiHO8qNSp5sEQ==
-	form.Add("client_id", client_id) // b892ab18b5e54333a7ebfe9adf363d94
+	form.Add("refresh_token", refresh_token) 
+	form.Add("client_id", client_id) 
 
    /*var proxyURL = url.URL{Host: "127.0.0.1:8080"}
    transport := &http.Transport{Proxy: http.ProxyURL(&proxyURL), TLSClientConfig: &tls.Config{},}
