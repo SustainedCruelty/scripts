@@ -1,3 +1,15 @@
+# SETTINGS
+
+REFRESH_PRICES = False
+REFRESH_SDE = False
+REGION_ID = 10000002
+CITADEL_ID = 1028858195912
+REFRESH_TOKEN = ""
+CLIENT_ID = ""
+MIN_MARGIN = 1.3
+MAX_MARGIN = 5
+MIN_VOLUME = 500000000
+
 import ctypes
 from io import StringIO
 import pandas as pd
@@ -50,9 +62,9 @@ def deserialize_marketGroupID(groupID: int) -> list:
         
     return types
 
-invTypes = load_static_dump('https://www.fuzzwork.co.uk/dump/latest/invTypes.csv.bz2')
-invMetaTypes = load_static_dump('https://www.fuzzwork.co.uk/dump/latest/invMetaTypes.csv.bz2')
-invMarketGroups = load_static_dump('https://www.fuzzwork.co.uk/dump/latest/invMarketGroups.csv.bz2')
+invTypes = load_static_dump('https://www.fuzzwork.co.uk/dump/latest/invTypes.csv.bz2', overwrite = REFRESH_SDE)
+invMetaTypes = load_static_dump('https://www.fuzzwork.co.uk/dump/latest/invMetaTypes.csv.bz2', overwrite = REFRESH_SDE)
+invMarketGroups = load_static_dump('https://www.fuzzwork.co.uk/dump/latest/invMarketGroups.csv.bz2', overwrite = REFRESH_SDE)
 
 length = len(invTypes)
 
@@ -94,10 +106,12 @@ invTypes['typeID'].to_csv('Shared/items.txt', index = False, header = False, lin
 
 library = ctypes.cdll.LoadLibrary('Libraries/esiRequests.dll')
 
-pull_market_data = library.pullMarketData
-pull_market_data.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]  #inputfile, outputfile, concurrency, region_id
+if not os.path.isfile("Shared/prices.json") or REFRESH_PRICES:
 
-pull_market_data("Shared/items.txt".encode("utf-8"), "Shared/prices.json".encode("utf-8"), 50, 10000002)
+	pull_market_data = library.pullMarketData
+	pull_market_data.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]  #inputfile, outputfile, concurrency, region_id
+
+	pull_market_data("Shared/items.txt".encode("utf-8"), "Shared/prices.json".encode("utf-8"), 80, REGION_ID)
 
 # Load the market data into a dataframe
 
@@ -110,14 +124,12 @@ prices = prices.rename(columns = {"typeName": "TypeName"})
 
 # Pull all market orders in the TTT
 
-REFRESH_TOKEN = "" # your refresh token here
-CLIENT_ID = "" # your client id here
+if not os.path.isfile("Shared/tttOrders.json") or REFRESH_PRICES:
 
+	pull_structure_orders = library.pullStructureOrders
+	pull_structure_orders.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_longlong, ctypes.c_int, ctypes.c_char_p] # refresh_token, client_id, structure_id, concurrency, outputfile
 
-pull_structure_orders = library.pullStructureOrders
-pull_structure_orders.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_longlong, ctypes.c_int, ctypes.c_char_p] # refresh_token, client_id, structure_id, concurrency, outputfile
-
-pull_structure_orders(REFRESH_TOKEN.encode('utf-8'), CLIENT_ID.encode('utf-8'), 1028858195912, 20,"Shared/tttOrders.json".encode('utf-8'))
+	pull_structure_orders(REFRESH_TOKEN.encode('utf-8'), CLIENT_ID.encode('utf-8'), CITADEL_ID, 20,"Shared/tttOrders.json".encode('utf-8'))
 
 # Update the Max Buy column with the TTT buy orders
 
@@ -130,6 +142,8 @@ tttOrders = tttOrders.groupby('type_id').agg({'price': 'max', 'tttBought': 'sum'
 prices = pd.merge(prices, tttOrders, how="left", left_on="TypeID", right_on = "type_id").drop("type_id", axis = 1).rename(columns = {'price': "tttMaxBuy"}) # add them to the dataframe with all the prices
 prices['MaxBuy'] = prices[['MaxBuy', 'tttMaxBuy']].max(axis = 1)
 prices['Bought'] = prices['Bought'] + prices['tttBought']
+
+
 
 # remove items with no buy orders
 prices = prices.loc[prices['MaxBuy'] != 0]
@@ -144,18 +158,18 @@ prices['SellToBuy'] = prices['Sold']/prices['Bought']
 
 # Remove all items with too little margin and too little volume and which haven't been bought or sold
 
-prices = prices.loc[(prices['Margin'] > 1.3)&(prices['Margin'] < 5)]
-prices = prices.loc[prices['ISKVolume'] > 300000000]
+prices = prices.loc[(prices['Margin'] > MIN_MARGIN)&(prices['Margin'] < MAX_MARGIN)]
+prices = prices.loc[prices['ISKVolume'] > MIN_VOLUME]
 prices = prices.loc[prices['AvgVolume'] > 1]
 
 prices.replace([np.inf, -np.inf], np.nan, inplace=True)
 prices.fillna(0, inplace = True)
 
-prices = prices.loc[prices['SellToBuy'] > 0]
+#prices = prices.loc[prices['SellToBuy'] > 0]
 
-# Create a measure based on which the items will be sorted
-# (ISKVolume + SoldVolume + BoughtVolume) / ((BuyQuant/BuyOrders)*(SellQuant/SellOrders))
+# Create a metric based on which the items will be sorted
+# Margin * ((ISKVolume + SoldVolume + BoughtVolume) / ((BuyQuant/BuyOrders)*(SellQuant/SellOrders)))
 
-prices['Sorting'] = (prices['ISKVolume'] + prices['SoldVolume'] + prices['BoughtVolume']) / ((prices['BuyQuant']/prices['BuyOrders'])*(prices['SellQuant']*prices['SellOrders']))
+prices['Sorting'] = prices['Margin']* ((prices['ISKVolume'] + prices['SoldVolume'] + prices['BoughtVolume']) / ((prices['BuyQuant']/prices['BuyOrders'])*(prices['SellQuant']*prices['SellOrders'])))
 
 print(prices.sort_values('Sorting', ascending = False))
